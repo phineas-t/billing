@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: billing
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/billing_db
+    username: billing_user
+    #connection string for postgresql db should match values with docker-compose.yml
+    password: billing_pass
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+      #doesn't allow hibernate to directly access schema, only check if db matches entity class
+    show-sql: true
+    #prints SQL query on terminal, what JPA translates java code into
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    #tells flyway where to find the SQL migration file
+
+  data:
+    #where to find redis i.e. docker container
+    redis:
+      host: localhost
+      port: 6379
+
+server:
+  port: 8081
+  #spring boot listens on port 8080
+
+  #app has three component spring boot, postgreSQL and redis (in docker container), this files tells spring boot where to find
+  #the other two components and how to connect to them on start up, if docker isn't running, app crashes
