@@ -11,7 +11,7 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder //to generate builder pattern Organization.builder().name("Acme").email("a@b.com").build()
+@Builder
 public class Organization {
 
     @Id
@@ -32,7 +32,7 @@ public class Organization {
     @Column(nullable = false)
     private OrgStatus status;
 
-    @Column(name = "created_at", updatable = false,nullable = false)
+    @Column(name = "created_at", updatable = false, nullable = false)
     private LocalDateTime createdAt;
 
     @PrePersist

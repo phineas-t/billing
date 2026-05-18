@@ -16,8 +16,7 @@ import jakarta.validation.Valid;
 public class AuthController {
 
     private final AuthService authService;
-    //@RequestBody deserialize the JSON request body into the DTO object
-    //@Valid, your validation annotations on RegisterRequest are ignored completely
+
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@RequestBody @Valid RegisterRequest request){
         AuthResponse response=authService.register(request);

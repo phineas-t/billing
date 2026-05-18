@@ -12,15 +12,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 
-//without this Spring returns a 400 response with a huge stack trace when
-//validation fails, this class intercepts that and returns a clean, structured error
-
-//global interceptor for exceptions thrown anywhere in your controllers. Instead of each controller handling its own errors,
-//this one class catches them all.
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    //when a @Valid check fails anywhere, run this method
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String,Object>> handleValidationErrors(MethodArgumentNotValidException ex){
 

@@ -20,13 +20,11 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
-    //@Transactional on register() — saving the org and saving the user are two separate database operations.
-    // it wraps them in one transaction. If userRepository.save(user) fails for any reason after orgRepository.save(org) succeeded, the entire operation rolls back
-    // no orphaned organization with no user. Either both save or neither does.
+
     @Transactional
     public AuthResponse register(RegisterRequest request){
 
-        if(orgRepository.existsByEmail(request.getEmail())){
+        if (userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("An account with this email already exists");
         }
 
@@ -41,7 +39,7 @@ public class AuthService {
         User user=User.builder().
                 org(savedOrg)
                 .email(request.getEmail())
-                .passwordHash(passwordEncoder.encode(request.getPassword())) //encode() converts password to BCrypt hash
+                .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .role(User.UserRole.ADMIN)
                 .build();
 
@@ -62,7 +60,7 @@ public class AuthService {
                     new IllegalArgumentException("Invalid email or password")
                 );
 
-        //BCrypt re-hashes the incoming password and compares it to the stored hash
+        // Same error for both wrong email and wrong password — prevents user enumeration
         if(!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())){
             throw new IllegalArgumentException("Invalid email or password");
         }

@@ -10,7 +10,7 @@ import java.util.UUID;
 @Builder
 @AllArgsConstructor
 public class AuthResponse {
-    //one response class for both register and login
+
     private UUID orgId;
     private String email;
     private String message;
