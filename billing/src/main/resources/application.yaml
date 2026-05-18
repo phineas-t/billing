@@ -33,7 +33,7 @@ spring:
 
 server:
   port: 8081
-  #spring boot listens on port 8080
+  #spring boot listens on port 8081
 
   #app has three component spring boot, postgreSQL and redis (in docker container), this files tells spring boot where to find
   #the other two components and how to connect to them on start up, if docker isn't running, app crashes
