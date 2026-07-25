@@ -3,18 +3,14 @@ package com.saas.billing.auth.dto;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
-import java.util.UUID;
 
 @Getter
 @Builder
 @AllArgsConstructor
-public class AuthResponse {
+public class RefreshTokenResponse {
 
-    private UUID orgId;
-    private String email;
     private String accessToken;
     private String refreshToken;
     private String tokenType;
     private int expiresIn;
-    private String message;
 }
