@@ -1,5 +1,6 @@
 package com.saas.billing.auth;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.saas.billing.common.TenantContext;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -9,14 +10,20 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication
+        .UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority
+        .SimpleGrantedAuthority;
+import org.springframework.security.core.context
+        .SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Component
@@ -24,6 +31,7 @@ import java.util.UUID;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final ObjectMapper objectMapper;
 
     @Override
     protected boolean shouldNotFilter(
@@ -76,14 +84,30 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         } catch (JwtException e) {
             SecurityContextHolder.clearContext();
-            response.setStatus(
-                    HttpServletResponse.SC_UNAUTHORIZED);
-            response.setContentType("application/json");
-            response.getWriter().write(
-                    "{\"error\": \"" + e.getMessage() + "\"}"
-            );
+            writeErrorResponse(response,
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    e.getMessage());
         } finally {
             TenantContext.clear();
         }
+    }
+
+    private void writeErrorResponse(
+            HttpServletResponse response,
+            int status,
+            String message) throws IOException {
+
+        Map<String, Object> errorBody = Map.of(
+                "timestamp",
+                LocalDateTime.now().toString(),
+                "status", status,
+                "error", message
+        );
+
+        response.setStatus(status);
+        response.setContentType(
+                MediaType.APPLICATION_JSON_VALUE);
+        objectMapper.writeValue(
+                response.getWriter(), errorBody);
     }
 }

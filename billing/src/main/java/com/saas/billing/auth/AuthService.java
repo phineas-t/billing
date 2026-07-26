@@ -13,6 +13,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Locale;
+
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -27,14 +29,18 @@ public class AuthService {
     @Transactional
     public AuthResponse register(RegisterRequest request) {
 
-        if (userRepository.existsByEmail(request.getEmail())) {
+        String email = request.getEmail()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException(
                     "An account with this email already exists");
         }
 
         Organization org = Organization.builder()
-                .name(request.getCompanyName())
-                .email(request.getEmail())
+                .name(request.getCompanyName().trim())
+                .email(email)
                 .status(Organization.OrgStatus.ACTIVE)
                 .build();
 
@@ -42,7 +48,7 @@ public class AuthService {
 
         User user = User.builder()
                 .org(savedOrg)
-                .email(request.getEmail())
+                .email(email)
                 .passwordHash(
                         passwordEncoder.encode(request.getPassword()))
                 .role(User.UserRole.ADMIN)
@@ -50,7 +56,7 @@ public class AuthService {
 
         User savedUser = userRepository.save(user);
 
-        String accessToken  = jwtUtil
+        String accessToken = jwtUtil
                 .generateAccessToken(savedUser);
         String refreshToken = refreshTokenService
                 .createRefreshToken(savedUser);
@@ -61,27 +67,32 @@ public class AuthService {
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .tokenType("Bearer")
-                .expiresIn(jwtProperties.getAccessTokenMinutes()
-                        * 60)
+                .expiresIn(jwtProperties
+                        .getAccessTokenMinutes() * 60)
                 .message("Registration successful")
                 .build();
     }
 
     public AuthResponse login(LoginRequest request) {
 
+        String email = request.getEmail()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
         User user = userRepository
-                .findByEmail(request.getEmail())
+                .findByEmail(email)
                 .orElseThrow(() ->
                         new IllegalArgumentException(
                                 "Invalid email or password"));
 
-        if (!passwordEncoder.matches(request.getPassword(),
+        if (!passwordEncoder.matches(
+                request.getPassword(),
                 user.getPasswordHash())) {
             throw new IllegalArgumentException(
                     "Invalid email or password");
         }
 
-        String accessToken  = jwtUtil
+        String accessToken = jwtUtil
                 .generateAccessToken(user);
         String refreshToken = refreshTokenService
                 .createRefreshToken(user);
@@ -92,8 +103,8 @@ public class AuthService {
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .tokenType("Bearer")
-                .expiresIn(jwtProperties.getAccessTokenMinutes()
-                        * 60)
+                .expiresIn(jwtProperties
+                        .getAccessTokenMinutes() * 60)
                 .message("Login successful")
                 .build();
     }

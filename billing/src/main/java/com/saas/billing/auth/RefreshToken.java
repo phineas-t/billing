@@ -55,7 +55,18 @@ public class RefreshToken {
                 && LocalDateTime.now().isBefore(expiresAt);
     }
 
-    public boolean isReused() {
+    /**
+     * Returns true when this token was already rotated
+     * (replacedByTokenHash is set) and someone is attempting
+     * to reuse it. This indicates a replay attack on a rotated
+     * token and should trigger full session revocation.
+     *
+     * Contrast with a token revoked by logout or admin action:
+     * revokedAt is set but replacedByTokenHash is null.
+     * That case is handled as ordinary revocation — reject only,
+     * no nuclear revocation.
+     */
+    public boolean isRotatedTokenReuse() {
         return revokedAt != null
                 && replacedByTokenHash != null;
     }
