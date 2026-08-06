@@ -44,4 +44,19 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>>
+    handleIllegalState(IllegalStateException ex) {
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("timestamp",
+                LocalDateTime.now().toString());
+        response.put("status", 409);
+        response.put("error", ex.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(response);
+    }
+
 }

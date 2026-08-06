@@ -11,6 +11,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
 @RequiredArgsConstructor
@@ -28,6 +29,19 @@ public class SecurityConfig {
                                 SessionCreationPolicy.STATELESS))
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(
+                                (request, response, authException) -> {
+                                    response.setStatus(
+                                            HttpServletResponse.SC_UNAUTHORIZED);
+                                    response.setContentType(
+                                            "application/json");
+                                    response.getWriter().write(
+                                            "{\"status\":401," +
+                                                    "\"error\":\"Authentication required\"}"
+                                    );
+                                })
+                )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
                         .anyRequest().authenticated()

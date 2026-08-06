@@ -3,7 +3,7 @@ spring:
     name: billing
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/billing_db?serverTimezone=Asia/Kolkata
+    url: jdbc:postgresql://localhost:5433/billing_db
     username: billing_user
     password: billing_pass
     driver-class-name: org.postgresql.Driver
@@ -34,4 +34,6 @@ security:
     access-token-minutes: 15
     refresh-token-days: 7
 
-
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:sk_test_placeholder}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_placeholder}
