@@ -6,6 +6,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.saas.billing.common.exception.PaymentProviderException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -56,6 +57,24 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
+                .body(response);
+    }
+
+    @ExceptionHandler(PaymentProviderException.class)
+    public ResponseEntity<Map<String, Object>>
+    handlePaymentProvider(
+            PaymentProviderException ex) {
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("timestamp",
+                LocalDateTime.now().toString());
+        response.put("status", 402);
+        response.put("error",
+                "Payment processing failed");
+        response.put("message", ex.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.PAYMENT_REQUIRED)
                 .body(response);
     }
 

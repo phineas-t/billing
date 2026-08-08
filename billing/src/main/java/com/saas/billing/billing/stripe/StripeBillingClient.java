@@ -2,6 +2,7 @@ package com.saas.billing.billing.stripe;
 
 import com.stripe.Stripe;
 import com.stripe.exception.StripeException;
+import com.saas.billing.common.exception.PaymentProviderException;
 import com.stripe.model.Customer;
 import com.stripe.model.Subscription;
 import com.stripe.model.SubscriptionItem;
@@ -60,8 +61,9 @@ public class StripeBillingClient {
         } catch (StripeException e) {
             log.error("Failed to create Stripe customer " +
                     "for org {}: {}", orgId, e.getMessage());
-            throw new RuntimeException(
-                    "Payment service error: " + e.getMessage(),
+            throw new PaymentProviderException(
+                    "Payment service unavailable. Please try again.",
+                    e.getMessage(),
                     e);
         }
     }
@@ -117,9 +119,9 @@ public class StripeBillingClient {
         } catch (StripeException e) {
             log.error("Failed to create Stripe subscription" +
                     " for org {}: {}", orgId, e.getMessage());
-            throw new RuntimeException(
-                    "Payment service error: " + e.getMessage(),
-                    e);
+            throw new PaymentProviderException(
+                    "Payment service unavailable. Please try again.",
+                    e.getMessage(), e);
         }
     }
 
@@ -177,8 +179,9 @@ public class StripeBillingClient {
         } catch (StripeException e) {
             log.error("Failed to update Stripe subscription" +
                     " for org {}: {}", orgId, e.getMessage());
-            throw new RuntimeException(
-                    "Payment service error: " + e.getMessage(),
+            throw new PaymentProviderException(
+                    "Payment service unavailable. Please try again.",
+                    e.getMessage(),
                     e);
         }
     }
@@ -208,8 +211,9 @@ public class StripeBillingClient {
         } catch (StripeException e) {
             log.error("Failed to cancel Stripe subscription" +
                     " for org {}: {}", orgId, e.getMessage());
-            throw new RuntimeException(
-                    "Payment service error: " + e.getMessage(),
+            throw new PaymentProviderException(
+                    "Payment service unavailable. Please try again.",
+                    e.getMessage(),
                     e);
         }
     }

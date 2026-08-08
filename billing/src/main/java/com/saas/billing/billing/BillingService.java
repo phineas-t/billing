@@ -104,7 +104,7 @@ public class BillingService {
         }
 
         if (newPlan.isFree()) {
-            return downgradeToFree(current, newPlan);
+            return downgradeToFree(current);
         }
 
         throw new IllegalStateException(
@@ -187,10 +187,28 @@ public class BillingService {
         return saved;
     }
 
-    private Subscription createPaidSubscription(
-            Organization org, Plan plan) {
+    private Subscription createPaidSubscription( Organization org, Plan plan) {
 
         String customerId = ensureStripeCustomer(org);
+
+        /**
+         * operationId makes the Stripe idempotency key unique per attempt.
+         *
+         * Trade-off: generating a new UUID on every call means client retries
+         * produce different idempotency keys, so Stripe treats each retry as
+         * a new operation. This is safer for the resubscribe-within-24-hours
+         * scenario (same org, same plan, within Stripe's idempotency window)
+         * but is NOT true retry-safe idempotency.
+         *
+         * Known limitation: if the Stripe call succeeds but the DB save fails,
+         * a client retry could create a second Stripe subscription. The local
+         * partial unique index protects against duplicate local records, but
+         * not against orphaned Stripe subscriptions.
+         *
+         * Production fix: use client-provided idempotency keys passed via
+         * request header (e.g. Idempotency-Key: <uuid>) so retries of the
+         * same client request always use the same key.
+         */
         String operationId = UUID.randomUUID().toString();
 
         StripeSubscriptionResult result =
@@ -294,7 +312,24 @@ public class BillingService {
                 subscriptionRepository.save(current));
     }
 
-    private SubscriptionResponse downgradeToFree( Subscription current, Plan freePlan) {
+    /**
+     * Paid → Free downgrade means: schedule cancellation at period end.
+     * The org keeps paid-plan access until currentPeriodEnd.
+     * Stripe fires customer.subscription.deleted when the period ends.
+     * Slice 5 webhook catches that event and marks this subscription CANCELLED.
+     * After that the org can manually subscribe to the Free plan.
+     *
+     * Known limitation: this does not automatically apply Free after cancellation.
+     * That would require a pending_plan_id field and Slice 5 webhook support.
+     */
+    private SubscriptionResponse downgradeToFree(
+            Subscription current) {
+
+        if (current.getCancelAtPeriodEnd()) {
+            throw new IllegalStateException(
+                    "Subscription is already scheduled " +
+                            "for cancellation");
+        }
 
         if (current.getStripeSubscriptionId() != null) {
             stripeBillingClient.cancelAtPeriodEnd(
@@ -308,8 +343,9 @@ public class BillingService {
                 .save(current);
 
         log.info("Paid subscription {} scheduled for " +
-                        "cancellation at period end (downgrade to Free) " +
-                        "for org {}", saved.getId(),
+                        "cancellation at period end (paid -> Free " +
+                        "downgrade) for org {}",
+                saved.getId(),
                 current.getOrg().getId());
 
         return toResponse(saved);
