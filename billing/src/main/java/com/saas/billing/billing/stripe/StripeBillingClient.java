@@ -1,5 +1,6 @@
 package com.saas.billing.billing.stripe;
 
+import com.stripe.Stripe;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Customer;
 import com.stripe.model.Subscription;
@@ -19,10 +20,23 @@ import java.time.ZoneOffset;
 @Slf4j
 public class StripeBillingClient {
 
+    private void validateStripeKey() {
+        String key = Stripe.apiKey;
+        if (key == null
+                || key.isBlank()
+                || key.equals("sk_test_placeholder")) {
+            throw new IllegalStateException(
+                    "Stripe is not configured. " +
+                            "Set STRIPE_SECRET_KEY environment variable " +
+                            "with a valid Stripe test secret key.");
+        }
+    }
+
     public StripeCustomerResult createCustomer(
             String email,
             String name,
             String orgId) {
+        validateStripeKey();
         try {
             CustomerCreateParams params =
                     CustomerCreateParams.builder()
@@ -56,7 +70,9 @@ public class StripeBillingClient {
             String customerId,
             String stripePriceId,
             String orgId,
-            String planId) {
+            String planId,
+            String operationId) {
+        validateStripeKey();
         try {
             SubscriptionCreateParams params =
                     SubscriptionCreateParams.builder()
@@ -77,7 +93,8 @@ public class StripeBillingClient {
                     RequestOptions.builder()
                             .setIdempotencyKey(
                                     "subscribe-" + orgId
-                                            + "-" + planId)
+                                            + "-" + planId
+                                            + "-" + operationId)
                             .build();
 
             Subscription subscription =
@@ -112,6 +129,7 @@ public class StripeBillingClient {
             String newStripePriceId,
             String orgId,
             String newPlanId) {
+        validateStripeKey();
         try {
             SubscriptionUpdateParams params =
                     SubscriptionUpdateParams.builder()
@@ -168,6 +186,7 @@ public class StripeBillingClient {
     public void cancelAtPeriodEnd(
             String stripeSubscriptionId,
             String orgId) {
+        validateStripeKey();
         try {
             SubscriptionUpdateParams params =
                     SubscriptionUpdateParams.builder()

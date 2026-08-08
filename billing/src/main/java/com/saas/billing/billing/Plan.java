@@ -38,7 +38,7 @@ public class Plan {
     private String billingInterval;
 
     @Convert(converter = PlanLimitsConverter.class)
-    @Column(columnDefinition = "jsonb")
+    @Column(columnDefinition = "jsonb", nullable = false)
     private PlanLimits limits;
 
     @Column(nullable = false)
@@ -54,6 +54,8 @@ public class Plan {
         if (this.active == null) this.active = true;
         if (this.billingInterval == null)
             this.billingInterval = "MONTHLY";
+        if (this.limits == null)
+            this.limits = PlanLimits.defaults();
     }
 
     public boolean isFree() {

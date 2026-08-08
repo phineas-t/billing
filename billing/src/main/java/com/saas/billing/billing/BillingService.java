@@ -30,7 +30,7 @@ public class BillingService {
     public SubscriptionResponse subscribe(
             SubscribeRequest request) {
 
-        UUID orgId = TenantContext.getOrgId();
+        UUID orgId = requireOrgId();
 
         Organization org = orgRepository
                 .findById(orgId)
@@ -70,7 +70,7 @@ public class BillingService {
     public SubscriptionResponse upgrade(
             UpgradeRequest request) {
 
-        UUID orgId = TenantContext.getOrgId();
+        UUID orgId = requireOrgId();
 
         Subscription current = subscriptionRepository
                 .findActiveByOrgId(orgId)
@@ -93,7 +93,7 @@ public class BillingService {
 
         if (current.getPlan().isFree()
                 && newPlan.isStripeBackedPlan()) {
-            return upgradeFreeToPayd(
+            return upgradeFreeToPaid(
                     current, newPlan, orgId);
         }
 
@@ -114,7 +114,7 @@ public class BillingService {
     @Transactional
     public SubscriptionResponse cancel() {
 
-        UUID orgId = TenantContext.getOrgId();
+        UUID orgId = requireOrgId();
 
         Subscription subscription = subscriptionRepository
                 .findActiveByOrgId(orgId)
@@ -128,18 +128,26 @@ public class BillingService {
                             "for cancellation");
         }
 
-        if (subscription.getPlan().isStripeBackedPlan()
-                && subscription
-                .getStripeSubscriptionId() != null) {
-            stripeBillingClient.cancelAtPeriodEnd(
-                    subscription.getStripeSubscriptionId(),
-                    orgId.toString());
+        if (subscription.getPlan().isFree()) {
+            subscription.setStatus(
+                    SubscriptionStatus.CANCELLED);
+            subscription.setCancelAtPeriodEnd(false);
+            subscriptionRepository.save(subscription);
+
+            log.info("Cancelled FREE subscription {} " +
+                    "for org {}", subscription.getId(), orgId);
+
+            return toResponse(subscription);
         }
+
+        stripeBillingClient.cancelAtPeriodEnd(
+                subscription.getStripeSubscriptionId(),
+                orgId.toString());
 
         subscription.setCancelAtPeriodEnd(true);
         subscriptionRepository.save(subscription);
 
-        log.info("Subscription {} scheduled for " +
+        log.info("Paid subscription {} scheduled for " +
                         "cancellation at period end for org {}",
                 subscription.getId(), orgId);
 
@@ -149,7 +157,7 @@ public class BillingService {
     @Transactional(readOnly = true)
     public SubscriptionResponse getCurrentSubscription() {
 
-        UUID orgId = TenantContext.getOrgId();
+        UUID orgId = requireOrgId();
 
         Subscription subscription = subscriptionRepository
                 .findActiveByOrgId(orgId)
@@ -183,13 +191,15 @@ public class BillingService {
             Organization org, Plan plan) {
 
         String customerId = ensureStripeCustomer(org);
+        String operationId = UUID.randomUUID().toString();
 
         StripeSubscriptionResult result =
                 stripeBillingClient.createSubscription(
                         customerId,
                         plan.getStripePriceId(),
                         org.getId().toString(),
-                        plan.getId().toString()
+                        plan.getId().toString(),
+                        operationId
                 );
 
         Subscription subscription = Subscription.builder()
@@ -221,20 +231,22 @@ public class BillingService {
         return saved;
     }
 
-    private SubscriptionResponse upgradeFreeToPayd(
+    private SubscriptionResponse upgradeFreeToPaid(
             Subscription current,
             Plan newPlan,
             UUID orgId) {
 
         Organization org = current.getOrg();
         String customerId = ensureStripeCustomer(org);
+        String operationId = UUID.randomUUID().toString();
 
         StripeSubscriptionResult result =
                 stripeBillingClient.createSubscription(
                         customerId,
                         newPlan.getStripePriceId(),
                         orgId.toString(),
-                        newPlan.getId().toString()
+                        newPlan.getId().toString(),
+                        operationId
                 );
 
         current.setPlan(newPlan);
@@ -282,9 +294,7 @@ public class BillingService {
                 subscriptionRepository.save(current));
     }
 
-    private SubscriptionResponse downgradeToFree(
-            Subscription current,
-            Plan freePlan) {
+    private SubscriptionResponse downgradeToFree( Subscription current, Plan freePlan) {
 
         if (current.getStripeSubscriptionId() != null) {
             stripeBillingClient.cancelAtPeriodEnd(
@@ -292,14 +302,17 @@ public class BillingService {
                     current.getOrg().getId().toString());
         }
 
-        current.setPlan(freePlan);
-        current.setStatus(SubscriptionStatus.ACTIVE);
-        current.setStripeSubscriptionId(null);
-        current.setStripeSubscriptionItemId(null);
-        current.setCancelAtPeriodEnd(false);
+        current.setCancelAtPeriodEnd(true);
 
-        return toResponse(
-                subscriptionRepository.save(current));
+        Subscription saved = subscriptionRepository
+                .save(current);
+
+        log.info("Paid subscription {} scheduled for " +
+                        "cancellation at period end (downgrade to Free) " +
+                        "for org {}", saved.getId(),
+                current.getOrg().getId());
+
+        return toResponse(saved);
     }
 
     private String ensureStripeCustomer(Organization org) {
@@ -346,5 +359,15 @@ public class BillingService {
                         s.getStripeSubscriptionId())
                 .createdAt(s.getCreatedAt())
                 .build();
+    }
+
+    private UUID requireOrgId() {
+        UUID orgId = TenantContext.getOrgId();
+        if (orgId == null) {
+            throw new IllegalStateException(
+                    "Tenant context is missing. " +
+                            "This operation requires authentication.");
+        }
+        return orgId;
     }
 }
