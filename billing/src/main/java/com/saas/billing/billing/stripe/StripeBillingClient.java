@@ -26,10 +26,10 @@ public class StripeBillingClient {
         if (key == null
                 || key.isBlank()
                 || key.equals("sk_test_placeholder")) {
-            throw new IllegalStateException(
+            throw new PaymentProviderException(
                     "Stripe is not configured. " +
-                            "Set STRIPE_SECRET_KEY environment variable " +
-                            "with a valid Stripe test secret key.");
+                            "Set STRIPE_SECRET_KEY environment " +
+                            "variable with a valid Stripe test key.");
         }
     }
 

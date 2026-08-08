@@ -68,13 +68,13 @@ public class GlobalExceptionHandler {
         Map<String, Object> response = new HashMap<>();
         response.put("timestamp",
                 LocalDateTime.now().toString());
-        response.put("status", 402);
+        response.put("status", 503);
         response.put("error",
-                "Payment processing failed");
+                "Payment service unavailable");
         response.put("message", ex.getMessage());
 
         return ResponseEntity
-                .status(HttpStatus.PAYMENT_REQUIRED)
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(response);
     }
 
