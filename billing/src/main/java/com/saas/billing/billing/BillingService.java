@@ -27,88 +27,59 @@ public class BillingService {
     private final StripeBillingClient stripeBillingClient;
 
     @Transactional
-    public SubscriptionResponse subscribe(
-            SubscribeRequest request) {
+    public SubscriptionResponse subscribe(SubscribeRequest request) {
 
         UUID orgId = requireOrgId();
 
-        Organization org = orgRepository
-                .findById(orgId)
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "Organization not found"));
+        Organization org = orgRepository.findById(orgId).orElseThrow(() ->
+                new IllegalStateException("Organization not found"));
 
-        subscriptionRepository
-                .findActiveByOrgId(orgId)
-                .ifPresent(existing -> {
-                    throw new IllegalStateException(
-                            "Organization already has an " +
-                                    "active subscription. " +
-                                    "Use upgrade to change plans.");
-                });
+        subscriptionRepository.findActiveByOrgId(orgId).ifPresent(existing -> {
+            throw new IllegalStateException("Organization already has an " + "active subscription. " + "Use upgrade to change plans.");
+        });
 
-        Plan plan = planRepository
-                .findByIdAndActiveTrue(request.getPlanId())
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Plan not found or not available"));
+        Plan plan = planRepository.findByIdAndActiveTrue(request.getPlanId()).orElseThrow(() ->
+                new IllegalArgumentException("Plan not found or not available"));
 
         Subscription subscription;
 
         if (plan.isFree()) {
-            subscription = createFreeSubscription(
-                    org, plan);
+            subscription = createFreeSubscription(org, plan);
         } else {
-            subscription = createPaidSubscription(
-                    org, plan);
+            subscription = createPaidSubscription(org, plan);
         }
 
         return toResponse(subscription);
     }
 
     @Transactional
-    public SubscriptionResponse upgrade(
-            UpgradeRequest request) {
+    public SubscriptionResponse upgrade(UpgradeRequest request) {
 
         UUID orgId = requireOrgId();
 
-        Subscription current = subscriptionRepository
-                .findActiveByOrgId(orgId)
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "No active subscription found. " +
-                                        "Subscribe first."));
+        Subscription current = subscriptionRepository.findActiveByOrgId(orgId).orElseThrow(() ->
+                new IllegalStateException("No active subscription found. " + "Subscribe first."));
 
-        Plan newPlan = planRepository
-                .findByIdAndActiveTrue(request.getNewPlanId())
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Plan not found or not available"));
+        Plan newPlan = planRepository.findByIdAndActiveTrue(request.getNewPlanId()).orElseThrow(() ->
+                new IllegalArgumentException("Plan not found or not available"));
 
-        if (current.getPlan().getId()
-                .equals(newPlan.getId())) {
-            throw new IllegalArgumentException(
-                    "Already on this plan");
+        if (current.getPlan().getId().equals(newPlan.getId())) {
+            throw new IllegalArgumentException("Already on this plan");
         }
 
-        if (current.getPlan().isFree()
-                && newPlan.isStripeBackedPlan()) {
-            return upgradeFreeToPaid(
-                    current, newPlan, orgId);
+        if (current.getPlan().isFree() && newPlan.isStripeBackedPlan()) {
+            return upgradeFreeToPaid(current, newPlan, orgId);
         }
 
-        if (current.getPlan().isStripeBackedPlan()
-                && newPlan.isStripeBackedPlan()) {
-            return upgradePaidToPaid(
-                    current, newPlan, orgId);
+        if (current.getPlan().isStripeBackedPlan() && newPlan.isStripeBackedPlan()) {
+            return upgradePaidToPaid(current, newPlan, orgId);
         }
 
         if (newPlan.isFree()) {
             return downgradeToFree(current);
         }
 
-        throw new IllegalStateException(
-                "Unexpected plan transition");
+        throw new IllegalStateException("Unexpected plan transition");
     }
 
     @Transactional
@@ -116,40 +87,29 @@ public class BillingService {
 
         UUID orgId = requireOrgId();
 
-        Subscription subscription = subscriptionRepository
-                .findActiveByOrgId(orgId)
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "No active subscription to cancel"));
+        Subscription subscription = subscriptionRepository.findActiveByOrgId(orgId).orElseThrow(() ->
+                new IllegalStateException("No active subscription to cancel"));
 
         if (subscription.getCancelAtPeriodEnd()) {
-            throw new IllegalStateException(
-                    "Subscription is already scheduled " +
-                            "for cancellation");
+            throw new IllegalStateException("Subscription is already scheduled " + "for cancellation");
         }
 
         if (subscription.getPlan().isFree()) {
-            subscription.setStatus(
-                    SubscriptionStatus.CANCELLED);
+            subscription.setStatus(SubscriptionStatus.CANCELLED);
             subscription.setCancelAtPeriodEnd(false);
             subscriptionRepository.save(subscription);
 
-            log.info("Cancelled FREE subscription {} " +
-                    "for org {}", subscription.getId(), orgId);
+            log.info("Cancelled FREE subscription {} " + "for org {}", subscription.getId(), orgId);
 
             return toResponse(subscription);
         }
 
-        stripeBillingClient.cancelAtPeriodEnd(
-                subscription.getStripeSubscriptionId(),
-                orgId.toString());
+        stripeBillingClient.cancelAtPeriodEnd(subscription.getStripeSubscriptionId(), orgId.toString());
 
         subscription.setCancelAtPeriodEnd(true);
         subscriptionRepository.save(subscription);
 
-        log.info("Paid subscription {} scheduled for " +
-                        "cancellation at period end for org {}",
-                subscription.getId(), orgId);
+        log.info("Paid subscription {} scheduled for " + "cancellation at period end for org {}", subscription.getId(), orgId);
 
         return toResponse(subscription);
     }
@@ -159,35 +119,28 @@ public class BillingService {
 
         UUID orgId = requireOrgId();
 
-        Subscription subscription = subscriptionRepository
-                .findActiveByOrgId(orgId)
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "No active subscription found"));
+        Subscription subscription = subscriptionRepository.findActiveByOrgId(orgId).orElseThrow(() ->
+                new IllegalStateException("No active subscription found"));
 
         return toResponse(subscription);
     }
 
-    private Subscription createFreeSubscription(
-            Organization org, Plan plan) {
+    private Subscription createFreeSubscription(Organization org, Plan plan) {
 
-        Subscription subscription = Subscription.builder()
-                .org(org)
-                .plan(plan)
-                .status(SubscriptionStatus.ACTIVE)
-                .cancelAtPeriodEnd(false)
-                .build();
+        Subscription subscription = Subscription.builder().
+                org(org).
+                plan(plan).
+                status(SubscriptionStatus.ACTIVE).
+                cancelAtPeriodEnd(false).build();
 
-        Subscription saved = subscriptionRepository
-                .save(subscription);
+        Subscription saved = subscriptionRepository.save(subscription);
 
-        log.info("Created FREE subscription {} for org {}",
-                saved.getId(), org.getId());
+        log.info("Created FREE subscription {} for org {}", saved.getId(), org.getId());
 
         return saved;
     }
 
-    private Subscription createPaidSubscription( Organization org, Plan plan) {
+    private Subscription createPaidSubscription(Organization org, Plan plan) {
 
         String customerId = ensureStripeCustomer(org);
 
@@ -211,105 +164,58 @@ public class BillingService {
          */
         String operationId = UUID.randomUUID().toString();
 
-        StripeSubscriptionResult result =
-                stripeBillingClient.createSubscription(
-                        customerId,
-                        plan.getStripePriceId(),
-                        org.getId().toString(),
-                        plan.getId().toString(),
-                        operationId
-                );
+        StripeSubscriptionResult result = stripeBillingClient.
+                createSubscription(customerId, plan.getStripePriceId(), org.getId().toString(), plan.getId().toString(), operationId);
 
-        Subscription subscription = Subscription.builder()
-                .org(org)
-                .plan(plan)
-                .stripeCustomerId(result.customerId())
-                .stripeSubscriptionId(
-                        result.subscriptionId())
-                .stripeSubscriptionItemId(
-                        result.subscriptionItemId())
-                .status(SubscriptionStatus
-                        .fromStripe(result.status()))
-                .currentPeriodStart(
-                        result.currentPeriodStart())
-                .currentPeriodEnd(
-                        result.currentPeriodEnd())
-                .cancelAtPeriodEnd(false)
-                .build();
+        Subscription subscription = Subscription.builder().
+                org(org).
+                plan(plan).
+                stripeCustomerId(result.customerId()).
+                stripeSubscriptionId(result.subscriptionId()).
+                stripeSubscriptionItemId(result.subscriptionItemId()).
+                status(SubscriptionStatus.fromStripe(result.status())).
+                currentPeriodStart(result.currentPeriodStart()).
+                currentPeriodEnd(result.currentPeriodEnd()).
+                cancelAtPeriodEnd(false).
+                build();
 
-        Subscription saved = subscriptionRepository
-                .save(subscription);
+        Subscription saved = subscriptionRepository.save(subscription);
 
-        log.info("Created PAID subscription {} " +
-                        "(Stripe: {}) for org {}",
-                saved.getId(),
-                result.subscriptionId(),
-                org.getId());
+        log.info("Created PAID subscription {} " + "(Stripe: {}) for org {}", saved.getId(), result.subscriptionId(), org.getId());
 
         return saved;
     }
 
-    private SubscriptionResponse upgradeFreeToPaid(
-            Subscription current,
-            Plan newPlan,
-            UUID orgId) {
+    private SubscriptionResponse upgradeFreeToPaid(Subscription current, Plan newPlan, UUID orgId) {
 
         Organization org = current.getOrg();
         String customerId = ensureStripeCustomer(org);
         String operationId = UUID.randomUUID().toString();
 
-        StripeSubscriptionResult result =
-                stripeBillingClient.createSubscription(
-                        customerId,
-                        newPlan.getStripePriceId(),
-                        orgId.toString(),
-                        newPlan.getId().toString(),
-                        operationId
-                );
+        StripeSubscriptionResult result = stripeBillingClient.createSubscription(customerId, newPlan.getStripePriceId(), orgId.toString(), newPlan.getId().toString(), operationId);
 
         current.setPlan(newPlan);
         current.setStripeCustomerId(result.customerId());
-        current.setStripeSubscriptionId(
-                result.subscriptionId());
-        current.setStripeSubscriptionItemId(
-                result.subscriptionItemId());
-        current.setStatus(SubscriptionStatus
-                .fromStripe(result.status()));
-        current.setCurrentPeriodStart(
-                result.currentPeriodStart());
-        current.setCurrentPeriodEnd(
-                result.currentPeriodEnd());
+        current.setStripeSubscriptionId(result.subscriptionId());
+        current.setStripeSubscriptionItemId(result.subscriptionItemId());
+        current.setStatus(SubscriptionStatus.fromStripe(result.status()));
+        current.setCurrentPeriodStart(result.currentPeriodStart());
+        current.setCurrentPeriodEnd(result.currentPeriodEnd());
 
-        return toResponse(
-                subscriptionRepository.save(current));
+        return toResponse(subscriptionRepository.save(current));
     }
 
-    private SubscriptionResponse upgradePaidToPaid(
-            Subscription current,
-            Plan newPlan,
-            UUID orgId) {
+    private SubscriptionResponse upgradePaidToPaid(Subscription current, Plan newPlan, UUID orgId) {
 
-        StripeSubscriptionResult result =
-                stripeBillingClient.updateSubscription(
-                        current.getStripeSubscriptionId(),
-                        current.getStripeSubscriptionItemId(),
-                        newPlan.getStripePriceId(),
-                        orgId.toString(),
-                        newPlan.getId().toString()
-                );
+        StripeSubscriptionResult result = stripeBillingClient.updateSubscription(current.getStripeSubscriptionId(), current.getStripeSubscriptionItemId(), newPlan.getStripePriceId(), orgId.toString(), newPlan.getId().toString());
 
         current.setPlan(newPlan);
-        current.setStripeSubscriptionItemId(
-                result.subscriptionItemId());
-        current.setStatus(SubscriptionStatus
-                .fromStripe(result.status()));
-        current.setCurrentPeriodStart(
-                result.currentPeriodStart());
-        current.setCurrentPeriodEnd(
-                result.currentPeriodEnd());
+        current.setStripeSubscriptionItemId(result.subscriptionItemId());
+        current.setStatus(SubscriptionStatus.fromStripe(result.status()));
+        current.setCurrentPeriodStart(result.currentPeriodStart());
+        current.setCurrentPeriodEnd(result.currentPeriodEnd());
 
-        return toResponse(
-                subscriptionRepository.save(current));
+        return toResponse(subscriptionRepository.save(current));
     }
 
     /**
@@ -318,91 +224,53 @@ public class BillingService {
      * Stripe fires customer.subscription.deleted when the period ends.
      * Slice 5 webhook catches that event and marks this subscription CANCELLED.
      * After that the org can manually subscribe to the Free plan.
-     *
+     * <p>
      * Known limitation: this does not automatically apply Free after cancellation.
      * That would require a pending_plan_id field and Slice 5 webhook support.
      */
-    private SubscriptionResponse downgradeToFree(
-            Subscription current) {
+    private SubscriptionResponse downgradeToFree(Subscription current) {
 
         if (current.getCancelAtPeriodEnd()) {
-            throw new IllegalStateException(
-                    "Subscription is already scheduled " +
-                            "for cancellation");
+            throw new IllegalStateException("Subscription is already scheduled " + "for cancellation");
         }
 
         if (current.getStripeSubscriptionId() != null) {
-            stripeBillingClient.cancelAtPeriodEnd(
-                    current.getStripeSubscriptionId(),
-                    current.getOrg().getId().toString());
+            stripeBillingClient.cancelAtPeriodEnd(current.getStripeSubscriptionId(), current.getOrg().getId().toString());
         }
 
         current.setCancelAtPeriodEnd(true);
 
-        Subscription saved = subscriptionRepository
-                .save(current);
+        Subscription saved = subscriptionRepository.save(current);
 
-        log.info("Paid subscription {} scheduled for " +
-                        "cancellation at period end (paid -> Free " +
-                        "downgrade) for org {}",
-                saved.getId(),
-                current.getOrg().getId());
+        log.info("Paid subscription {} scheduled for " + "cancellation at period end (paid -> Free " + "downgrade) for org {}", saved.getId(), current.getOrg().getId());
 
         return toResponse(saved);
     }
 
     private String ensureStripeCustomer(Organization org) {
 
-        if (org.getStripeCustomerId() != null
-                && !org.getStripeCustomerId().isBlank()) {
+        if (org.getStripeCustomerId() != null && !org.getStripeCustomerId().isBlank()) {
             return org.getStripeCustomerId();
         }
 
-        StripeCustomerResult result =
-                stripeBillingClient.createCustomer(
-                        org.getEmail(),
-                        org.getName(),
-                        org.getId().toString()
-                );
+        StripeCustomerResult result = stripeBillingClient.createCustomer(org.getEmail(), org.getName(), org.getId().toString());
 
         org.setStripeCustomerId(result.customerId());
         orgRepository.save(org);
 
-        log.info("Created Stripe customer {} for org {}",
-                result.customerId(), org.getId());
+        log.info("Created Stripe customer {} for org {}", result.customerId(), org.getId());
 
         return result.customerId();
     }
 
-    private SubscriptionResponse toResponse(
-            Subscription s) {
-        return SubscriptionResponse.builder()
-                .subscriptionId(s.getId())
-                .orgId(s.getOrg().getId())
-                .planCode(s.getPlan().getCode().name())
-                .planDisplayName(
-                        s.getPlan().getDisplayName())
-                .status(s.getStatus())
-                .monthlyPriceCents(
-                        s.getPlan().getMonthlyPriceCents())
-                .limits(s.getPlan().getLimits())
-                .currentPeriodStart(
-                        s.getCurrentPeriodStart())
-                .currentPeriodEnd(s.getCurrentPeriodEnd())
-                .cancelAtPeriodEnd(
-                        s.getCancelAtPeriodEnd())
-                .stripeSubscriptionId(
-                        s.getStripeSubscriptionId())
-                .createdAt(s.getCreatedAt())
-                .build();
+    private SubscriptionResponse toResponse(Subscription s) {
+        return SubscriptionResponse.builder().subscriptionId(s.getId()).orgId(s.getOrg().getId()).planCode(s.getPlan().getCode().name()).planDisplayName(s.getPlan().getDisplayName()).status(s.getStatus()).monthlyPriceCents(s.getPlan().getMonthlyPriceCents()).limits(s.getPlan().getLimits()).currentPeriodStart(s.getCurrentPeriodStart()).currentPeriodEnd(s.getCurrentPeriodEnd()).cancelAtPeriodEnd(s.getCancelAtPeriodEnd()).stripeSubscriptionId(s.getStripeSubscriptionId()).createdAt(s.getCreatedAt()).build();
     }
 
     private UUID requireOrgId() {
         UUID orgId = TenantContext.getOrgId();
         if (orgId == null) {
-            throw new IllegalStateException(
-                    "Tenant context is missing. " +
-                            "This operation requires authentication.");
+            throw new IllegalStateException("Tenant context is missing. " + "This operation requires authentication.");
         }
         return orgId;
     }

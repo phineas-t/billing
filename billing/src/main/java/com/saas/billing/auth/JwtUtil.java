@@ -11,7 +11,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
-import java.util.UUID;
+
 
 @Component
 @RequiredArgsConstructor
@@ -41,22 +41,7 @@ public class JwtUtil {
                 .signWith(getSigningKey())
                 .compact();
     }
-
-//    public String generateRefreshToken(User user) {
-//        Instant now = Instant.now();
-//        Instant expiry = now.plusSeconds(
-//                jwtProperties.getRefreshTokenDays() * 86400L);
-//
-//        return Jwts.builder()
-//                .subject(user.getId().toString())
-//                .claim("orgId", user.getOrg().getId().toString())
-//                .claim("type", "refresh")
-//                .id(UUID.randomUUID().toString())
-//                .issuedAt(Date.from(now))
-//                .expiration(Date.from(expiry))
-//                .signWith(getSigningKey())
-//                .compact();
-//    }
+    
 
     public Claims parseAndValidate(String token,
                                    String expectedType) {

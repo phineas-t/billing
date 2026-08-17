@@ -14,5 +14,7 @@ public class StripeConfig {
     @PostConstruct
     public void initStripe() {
         Stripe.apiKey = stripeProperties.getSecretKey();
+        System.out.println("=== WEBHOOK SECRET LOADED: " +
+                stripeProperties.getWebhookSecret() + " ===");
     }
 }
