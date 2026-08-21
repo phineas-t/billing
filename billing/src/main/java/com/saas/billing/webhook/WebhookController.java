@@ -29,21 +29,15 @@ public class WebhookController {
         Event event;
         try {
             event = Webhook.constructEvent(
-                    new String(payload,
-                            StandardCharsets.UTF_8),
+                    new String(payload, StandardCharsets.UTF_8),
                     sigHeader,
-                    stripeProperties.getWebhookSecret()
-            );
+                    stripeProperties.getWebhookSecret());
         } catch (SignatureVerificationException e) {
-            log.warn("Invalid Stripe webhook signature: {}",
-                    e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body("Invalid signature");
+            log.warn("Invalid Stripe webhook signature: {}", e.getMessage());
+            return ResponseEntity.badRequest().body("Invalid signature");
         } catch (Exception e) {
-            log.error("Failed to parse Stripe webhook: {}",
-                    e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body("Invalid payload");
+            log.error("Failed to parse Stripe webhook payload: {}", e.getMessage(), e);
+            return ResponseEntity.ok("Received");
         }
 
         webhookService.processEvent(event);
