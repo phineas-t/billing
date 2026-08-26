@@ -9,11 +9,20 @@ import java.util.UUID;
 @Repository
 public interface SubscriptionRepository extends JpaRepository<Subscription, UUID> {
 
+//    @Query("""
+//        SELECT s FROM Subscription s
+//        WHERE s.org.id = :orgId
+//        AND s.status <> com.saas.billing.billing
+//            .SubscriptionStatus.CANCELLED
+//        ORDER BY s.createdAt DESC
+//        """)
+
+    //change - qwen
     @Query("""
         SELECT s FROM Subscription s
+        LEFT JOIN FETCH s.plan
         WHERE s.org.id = :orgId
-        AND s.status <> com.saas.billing.billing
-            .SubscriptionStatus.CANCELLED
+        AND s.status <> com.saas.billing.billing.SubscriptionStatus.CANCELLED
         ORDER BY s.createdAt DESC
         """)
     Optional<Subscription> findActiveByOrgId(UUID orgId);

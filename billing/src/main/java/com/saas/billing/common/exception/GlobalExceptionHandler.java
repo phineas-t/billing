@@ -7,6 +7,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.saas.billing.common.exception.PaymentProviderException;
+import com.saas.billing.common.exception.UsageLimitExceededException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -76,6 +77,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(response);
+    }
+
+    @ExceptionHandler(UsageLimitExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleUsageLimit(
+            UsageLimitExceededException ex) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("timestamp", LocalDateTime.now().toString());
+        response.put("status", 402);
+        response.put("error", "Usage limit exceeded");
+        response.put("message", ex.getMessage());
+        response.put("currentUsage", ex.getCurrentUsage());
+        response.put("limit", ex.getLimit());
+        response.put("planCode", ex.getPlanCode());
+        response.put("upgradeUrl", "/billing/upgrade");
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(response);
     }
 
 }
