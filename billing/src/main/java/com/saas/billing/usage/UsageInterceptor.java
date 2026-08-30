@@ -1,6 +1,7 @@
 package com.saas.billing.usage;
 
 import com.saas.billing.common.TenantContext;
+import com.saas.billing.common.exception.UsageLimitExceededException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +30,16 @@ public class UsageInterceptor implements HandlerInterceptor {
             idempotencyKey = UUID.randomUUID().toString();
         }
 
-        usageService.checkAndIncrementUsage(idempotencyKey);
+        try {
+            usageService.checkAndIncrementUsage(orgId, idempotencyKey);
+        } catch (UsageLimitExceededException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("UsageInterceptor error for org {}: {}",
+                    orgId, e.getMessage(), e);
+            return true;
+        }
+
         return true;
     }
 }

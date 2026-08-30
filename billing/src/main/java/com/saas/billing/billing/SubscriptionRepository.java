@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.List;
 
 @Repository
 public interface SubscriptionRepository extends JpaRepository<Subscription, UUID> {
@@ -26,6 +27,13 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
         ORDER BY s.createdAt DESC
         """)
     Optional<Subscription> findActiveByOrgId(UUID orgId);
+
+    @Query("""
+    SELECT s FROM Subscription s
+    WHERE s.status = com.saas.billing.billing.SubscriptionStatus.ACTIVE
+    AND s.stripeSubscriptionId IS NOT NULL
+    """)
+    List<Subscription> findAllActiveWithStripeSubscription();
 
     Optional<Subscription> findByStripeSubscriptionId( String stripeSubscriptionId);
 }

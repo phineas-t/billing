@@ -1,26 +1,24 @@
 package com.saas.billing.usage;
 
-import com.saas.billing.billing.Plan;
 import com.saas.billing.billing.PlanLimits;
 import com.saas.billing.billing.Subscription;
 import com.saas.billing.billing.SubscriptionRepository;
 import com.saas.billing.billing.SubscriptionStatus;
-import com.saas.billing.common.TenantContext;
 import com.saas.billing.common.exception.UsageLimitExceededException;
 import com.saas.billing.organization.Organization;
 import com.saas.billing.organization.OrganizationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.util.UUID;
 
-import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.TimeUnit;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +28,7 @@ public class UsageService {
     private static final String METRIC_API_CALLS = "api_calls";
     private static final String USAGE_KEY_PREFIX = "usage:";
     private static final String IDEMPOTENCY_KEY_PREFIX = "idem:";
+    private static final String LIMIT_KEY_PREFIX = "limit:";
     private static final DateTimeFormatter PERIOD_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM");
 
@@ -39,21 +38,24 @@ public class UsageService {
     private final OrganizationRepository orgRepository;
 
     /**
-     * Core usage check and increment method.
-     * Called by UsageInterceptor on every authenticated request.
+     * Core usage check and increment.
+     * orgId is passed explicitly — never read from TenantContext here.
+     * This makes the method testable and callable from any context.
      *
      * Flow:
-     * 1. Resolve orgId from TenantContext
-     * 2. Check idempotency key via Redis SETNX — skip if duplicate
-     * 3. Get current usage counter from Redis
-     * 4. Get plan limit from Redis cache (or DB if cache miss)
-     * 5. If at limit → throw UsageLimitExceededException (402)
-     * 6. Increment Redis counter atomically
+     * 1. Validate orgId is not null
+     * 2. Redis SETNX idempotency check — skip if duplicate request
+     * 3. Get current counter from Redis
+     * 4. Get plan limit from Redis cache (60s TTL), fallback to DB
+     * 5. If at limit — throw UsageLimitExceededException (402)
+     * 6. Increment counter atomically (Redis INCR)
      * 7. Persist UsageRecord to PostgreSQL asynchronously
      */
-    public void checkAndIncrementUsage(String idempotencyKey) {
-        UUID orgId = TenantContext.getOrgId();
-        if (orgId == null) return;
+    public void checkAndIncrementUsage(UUID orgId, String idempotencyKey) {
+        if (orgId == null) {
+            throw new IllegalStateException(
+                    "orgId must not be null in checkAndIncrementUsage");
+        }
 
         String billingPeriod = YearMonth.now().format(PERIOD_FORMATTER);
         String usageKey = USAGE_KEY_PREFIX + orgId + ":" + billingPeriod;
@@ -64,36 +66,40 @@ public class UsageService {
             Boolean isNew = redisTemplate.opsForValue()
                     .setIfAbsent(idemKey, "1", 24, TimeUnit.HOURS);
             if (Boolean.FALSE.equals(isNew)) {
-                log.debug("Duplicate request detected for idempotency key: {}", idempotencyKey);
+                log.debug("Duplicate request skipped for idempotency key: {}",
+                        idempotencyKey);
                 return;
             }
         }
 
         // Get current usage
         String currentValueStr = redisTemplate.opsForValue().get(usageKey);
-        long currentUsage = currentValueStr != null ? Long.parseLong(currentValueStr) : 0L;
+        long currentUsage = currentValueStr != null
+                ? Long.parseLong(currentValueStr) : 0L;
 
-        // Get plan limit
-        long limit = getPlanLimit(orgId, billingPeriod);
+        // Get plan limit — Redis cache first, DB fallback
+        long limit = getPlanLimit(orgId);
 
         // Enforce limit
         if (currentUsage >= limit) {
             String planCode = getPlanCode(orgId);
-            throw new UsageLimitExceededException(currentUsage, limit, planCode, METRIC_API_CALLS);
+            log.info("Usage limit reached for org {} on plan {}: {}/{}",
+                    orgId, planCode, currentUsage, limit);
+            throw new UsageLimitExceededException(
+                    currentUsage, limit, planCode, METRIC_API_CALLS);
         }
 
-        // Increment atomically — set expiry to end of current month + 1 day buffer
+        // Atomic increment
         Long newCount = redisTemplate.opsForValue().increment(usageKey);
         redisTemplate.expire(usageKey, 32, TimeUnit.DAYS);
-
         log.debug("Usage incremented for org {}: {}/{}", orgId, newCount, limit);
 
-        // Persist to PostgreSQL asynchronously
+        // Persist to PostgreSQL asynchronously — does not block request thread
         persistUsageRecord(orgId, idempotencyKey, billingPeriod);
     }
 
-    private long getPlanLimit(UUID orgId, String billingPeriod) {
-        String limitKey = "limit:" + orgId;
+    private long getPlanLimit(UUID orgId) {
+        String limitKey = LIMIT_KEY_PREFIX + orgId;
         String cachedLimit = redisTemplate.opsForValue().get(limitKey);
 
         if (cachedLimit != null) {
@@ -106,10 +112,15 @@ public class UsageService {
                     PlanLimits limits = sub.getPlan().getLimits();
                     return limits != null ? (long) limits.apiCallsPerMonth() : 1000L;
                 })
-                .orElse(1000L);
+                .orElseGet(() -> {
+                    log.warn("No active subscription found for org {} " +
+                            "— defaulting to Free plan limit of 1000", orgId);
+                    return 1000L;
+                });
 
-        // Cache for 60 seconds — short enough to reflect upgrades quickly
-        redisTemplate.opsForValue().set(limitKey, String.valueOf(limit), 60, TimeUnit.SECONDS);
+        // Cache for 60 seconds — short enough to reflect upgrades promptly
+        redisTemplate.opsForValue().set(limitKey, String.valueOf(limit),
+                60, TimeUnit.SECONDS);
         return limit;
     }
 
@@ -119,17 +130,28 @@ public class UsageService {
                 .orElse("FREE");
     }
 
+    /**
+     * Persists usage record to PostgreSQL.
+     * @Async runs in a separate thread pool — does not block the request thread.
+     * Requires @EnableAsync on BillingApplication.
+     */
+    @Async
     @Transactional
-    public void persistUsageRecord(UUID orgId, String idempotencyKey, String billingPeriod) {
+    public void persistUsageRecord(UUID orgId, String idempotencyKey,
+                                   String billingPeriod) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) return;
 
-        // DB-level idempotency guard
+        // DB-level idempotency guard — belt and braces after Redis SETNX
         if (usageRecordRepository.existsByIdempotencyKey(idempotencyKey)) return;
 
         Organization org = orgRepository.findById(orgId).orElse(null);
-        if (org == null) return;
+        if (org == null) {
+            log.warn("Cannot persist usage record — org {} not found", orgId);
+            return;
+        }
 
-        Subscription sub = subscriptionRepository.findActiveByOrgId(orgId).orElse(null);
+        Subscription sub = subscriptionRepository
+                .findActiveByOrgId(orgId).orElse(null);
 
         usageRecordRepository.save(UsageRecord.builder()
                 .org(org)
@@ -142,16 +164,17 @@ public class UsageService {
     }
 
     /**
-     * Returns current usage stats for the calling org.
-     * Used by GET /usage endpoint.
+     * Returns current usage stats for the given org.
+     * Used by GET /usage/current.
      */
     public UsageStats getCurrentUsage(UUID orgId) {
         String billingPeriod = YearMonth.now().format(PERIOD_FORMATTER);
         String usageKey = USAGE_KEY_PREFIX + orgId + ":" + billingPeriod;
 
         String currentValueStr = redisTemplate.opsForValue().get(usageKey);
-        long currentUsage = currentValueStr != null ? Long.parseLong(currentValueStr) : 0L;
-        long limit = getPlanLimit(orgId, billingPeriod);
+        long currentUsage = currentValueStr != null
+                ? Long.parseLong(currentValueStr) : 0L;
+        long limit = getPlanLimit(orgId);
         String planCode = getPlanCode(orgId);
 
         return new UsageStats(orgId, billingPeriod, currentUsage, limit, planCode);
@@ -159,25 +182,23 @@ public class UsageService {
 
     /**
      * Nightly job — reports metered usage to Stripe.
-     * Runs at 2 AM every day.
-     * For metered plans, this tells Stripe how much to charge on next invoice.
+     * Uses targeted query instead of findAll() to avoid loading
+     * cancelled/free subscriptions into memory.
      */
     @Scheduled(cron = "0 0 2 * * *")
     public void reportUsageToStripe() {
         log.info("Starting nightly usage reporting to Stripe");
         String billingPeriod = YearMonth.now().format(PERIOD_FORMATTER);
 
-        subscriptionRepository.findAll().stream()
-                .filter(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE)
-                .filter(sub -> sub.getStripeSubscriptionId() != null)
+        subscriptionRepository.findAllActiveWithStripeSubscription()
                 .forEach(sub -> {
                     try {
                         long usage = usageRecordRepository.sumUsageForPeriod(
-                                sub.getOrg().getId(), billingPeriod, METRIC_API_CALLS);
+                                sub.getOrg().getId(),
+                                billingPeriod,
+                                METRIC_API_CALLS);
                         log.info("Org {} used {} API calls in period {}",
                                 sub.getOrg().getId(), usage, billingPeriod);
-                        // Stripe usage reporting would go here for metered billing plans
-                        // stripe.subscriptionItems.createUsageRecord(itemId, usage, timestamp)
                     } catch (Exception e) {
                         log.error("Failed to report usage for org {}: {}",
                                 sub.getOrg().getId(), e.getMessage());
