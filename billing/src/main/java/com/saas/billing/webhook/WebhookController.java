@@ -11,6 +11,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+@Tag(name = "Webhooks", description = "Stripe webhook event receiver")
 @RestController
 @RequestMapping("/webhooks")
 @RequiredArgsConstructor
@@ -20,11 +24,14 @@ public class WebhookController {
     private final WebhookService webhookService;
     private final StripeProperties stripeProperties;
 
+    @Operation(summary = "Stripe webhook endpoint",
+            description = "Receives Stripe events. Verifies HMAC-SHA256 " +
+                    "signature before processing. Idempotent — " +
+                    "duplicate events are safely ignored.")
     @PostMapping("/stripe")
     public ResponseEntity<String> handleStripeWebhook(
             @RequestBody byte[] payload,
-            @RequestHeader("Stripe-Signature")
-            String sigHeader) {
+            @RequestHeader("Stripe-Signature") String sigHeader) {
 
         Event event;
         try {
@@ -36,7 +43,7 @@ public class WebhookController {
             log.warn("Invalid Stripe webhook signature: {}", e.getMessage());
             return ResponseEntity.badRequest().body("Invalid signature");
         } catch (Exception e) {
-            log.error("Failed to parse Stripe webhook payload: {}", e.getMessage(), e);
+            log.error("Failed to parse Stripe webhook: {}", e.getMessage());
             return ResponseEntity.ok("Received");
         }
 

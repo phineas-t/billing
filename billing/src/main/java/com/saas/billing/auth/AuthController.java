@@ -15,7 +15,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Authentication",
+        description = "Register organisations, login, and manage JWT tokens")
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -25,38 +29,38 @@ public class AuthController {
     private final RefreshTokenService refreshTokenService;
     private final JwtProperties jwtProperties;
 
+    @Operation(summary = "Register a new organisation",
+            description = "Creates an organisation and its first admin user. " +
+                    "Returns JWT access and refresh tokens.")
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(
             @RequestBody @Valid RegisterRequest request) {
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
+        return ResponseEntity.status(HttpStatus.CREATED)
                 .body(authService.register(request));
     }
 
+    @Operation(summary = "Login",
+            description = "Authenticates a user and returns JWT access " +
+                    "and refresh tokens.")
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(
             @RequestBody @Valid LoginRequest request) {
-        return ResponseEntity
-                .ok(authService.login(request));
+        return ResponseEntity.ok(authService.login(request));
     }
 
+    @Operation(summary = "Refresh access token",
+            description = "Exchanges a valid refresh token for a new " +
+                    "access + refresh token pair. Old token is revoked.")
     @PostMapping("/refresh")
     public ResponseEntity<RefreshTokenResponse> refresh(
-            @RequestBody @Valid
-            RefreshTokenRequest request) {
-
+            @RequestBody @Valid RefreshTokenRequest request) {
         TokenRotationResult result = refreshTokenService
-                .rotateRefreshToken(
-                        request.getRefreshToken());
-
-        return ResponseEntity.ok(
-                RefreshTokenResponse.builder()
-                        .accessToken(result.accessToken())
-                        .refreshToken(result.refreshToken())
-                        .tokenType("Bearer")
-                        .expiresIn(jwtProperties
-                                .getAccessTokenMinutes() * 60)
-                        .build()
-        );
+                .rotateRefreshToken(request.getRefreshToken());
+        return ResponseEntity.ok(RefreshTokenResponse.builder()
+                .accessToken(result.accessToken())
+                .refreshToken(result.refreshToken())
+                .tokenType("Bearer")
+                .expiresIn(jwtProperties.getAccessTokenMinutes() * 60)
+                .build());
     }
 }

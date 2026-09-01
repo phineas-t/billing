@@ -1,0 +1,150 @@
+package com.saas.billing.webhook;
+
+import com.saas.billing.billing.Subscription;
+import com.saas.billing.billing.SubscriptionRepository;
+import com.saas.billing.billing.SubscriptionStatus;
+import com.saas.billing.invoice.InvoiceRepository;
+import com.stripe.model.Event;
+import com.stripe.model.EventDataObjectDeserializer;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class WebhookServiceTest {
+
+    @Mock
+    private StripeEventRepository stripeEventRepository;
+
+    @Mock
+    private StripeEventRecorder stripeEventRecorder;
+
+    @Mock
+    private SubscriptionRepository subscriptionRepository;
+
+    @Mock
+    private InvoiceRepository invoiceRepository;
+
+    @InjectMocks
+    private WebhookService webhookService;
+
+    private Event mockEvent;
+
+    @BeforeEach
+    void setUp() {
+        mockEvent = mock(Event.class);
+        when(mockEvent.getId()).thenReturn("evt_test_123");
+        when(mockEvent.getType()).thenReturn("customer.created");
+
+        EventDataObjectDeserializer deserializer =
+                mock(EventDataObjectDeserializer.class);
+        when(deserializer.getObject()).thenReturn(Optional.empty());
+        when(mockEvent.getDataObjectDeserializer())
+                .thenReturn(deserializer);
+    }
+
+    @Test
+    void processEvent_alreadyProcessed_skipsProcessing() {
+        StripeEvent existingEvent = StripeEvent.builder()
+                .stripeEventId("evt_test_123")
+                .eventType("customer.created")
+                .status(StripeEventStatus.PROCESSED)
+                .processingAttempts(1)
+                .build();
+
+        when(stripeEventRepository.findByStripeEventId("evt_test_123"))
+                .thenReturn(Optional.of(existingEvent));
+
+        webhookService.processEvent(mockEvent);
+
+        // stripeEventRepository.save() should NOT be called
+        // because event was already PROCESSED
+        verify(stripeEventRepository, never()).save(
+                argThat(e -> e.getStatus() == StripeEventStatus.PROCESSED
+                        && e.getStripeEventId().equals("evt_test_123")
+                        && e.getProcessingAttempts() > 1));
+    }
+
+    @Test
+    void processEvent_newUnhandledEvent_savedAsProcessed() {
+        when(stripeEventRepository.findByStripeEventId("evt_test_123"))
+                .thenReturn(Optional.empty());
+        when(stripeEventRepository.save(any(StripeEvent.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        webhookService.processEvent(mockEvent);
+
+        verify(stripeEventRepository).save(
+                argThat(e -> e.getStatus() == StripeEventStatus.PROCESSED
+                        && e.getStripeEventId().equals("evt_test_123")));
+    }
+
+    @Test
+    void processEvent_failedEventRetried_incrementsAttemptCount() {
+        StripeEvent failedEvent = StripeEvent.builder()
+                .stripeEventId("evt_test_123")
+                .eventType("customer.created")
+                .status(StripeEventStatus.FAILED)
+                .processingAttempts(1)
+                .lastError("Previous failure")
+                .build();
+
+        when(stripeEventRepository.findByStripeEventId("evt_test_123"))
+                .thenReturn(Optional.of(failedEvent));
+        when(stripeEventRepository.save(any(StripeEvent.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        webhookService.processEvent(mockEvent);
+
+        verify(stripeEventRepository).save(
+                argThat(e -> e.getStatus() == StripeEventStatus.PROCESSED
+                        && e.getProcessingAttempts() == 2
+                        && e.getLastError() == null));
+    }
+
+    @Test
+    void processEvent_subscriptionDeleted_updatesLocalStatus() {
+        String stripeSubId = "sub_test_123";
+
+        Event subDeletedEvent = mock(Event.class);
+        when(subDeletedEvent.getId()).thenReturn("evt_sub_deleted");
+        when(subDeletedEvent.getType())
+                .thenReturn("customer.subscription.deleted");
+
+        com.stripe.model.Subscription stripeSub =
+                mock(com.stripe.model.Subscription.class);
+        when(stripeSub.getId()).thenReturn(stripeSubId);
+        when(stripeSub.getStatus()).thenReturn("canceled");
+        when(stripeSub.getCurrentPeriodStart()).thenReturn(null);
+        when(stripeSub.getCurrentPeriodEnd()).thenReturn(null);
+        when(stripeSub.getCancelAtPeriodEnd()).thenReturn(false);
+
+        EventDataObjectDeserializer deserializer =
+                mock(EventDataObjectDeserializer.class);
+        when(deserializer.getObject())
+                .thenReturn(Optional.of(stripeSub));
+        when(subDeletedEvent.getDataObjectDeserializer())
+                .thenReturn(deserializer);
+
+        Subscription localSub = mock(Subscription.class);
+        when(subscriptionRepository.findByStripeSubscriptionId(stripeSubId))
+                .thenReturn(Optional.of(localSub));
+        when(stripeEventRepository.findByStripeEventId("evt_sub_deleted"))
+                .thenReturn(Optional.empty());
+        when(stripeEventRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        webhookService.processEvent(subDeletedEvent);
+
+        verify(localSub).setStatus(SubscriptionStatus.CANCELLED);
+        verify(localSub).setCancelAtPeriodEnd(false);
+        verify(subscriptionRepository).save(localSub);
+    }
+}
