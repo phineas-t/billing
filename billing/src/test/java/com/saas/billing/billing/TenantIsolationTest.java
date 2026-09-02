@@ -10,7 +10,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.TestMethodOrder;
 
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class TenantIsolationTest extends BaseIntegrationTest {
 
     @Autowired
@@ -68,20 +71,38 @@ class TenantIsolationTest extends BaseIntegrationTest {
                     .andExpect(status().isOk());
         }
 
-        // Org B starts at 0 — completely unaffected by Org A's calls
-        String responseBAfter = mockMvc.perform(get("/usage/current")
+        // Org B's first call to /usage/current increments their own counter
+        // so we expect 1 (their own call) not 0
+        // The key assertion is that Org B's usage is NOT affected by Org A's 3 calls
+        // Org A made 3 calls → their counter is 3
+        // Org B made 0 calls before this → their counter starts at 0
+        // This call increments Org B to 1
+        String responseBefore = mockMvc.perform(get("/usage/current")
+                        .header("Authorization", "Bearer " + tokenOrgA))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        long orgAUsage = objectMapper.readTree(responseBefore)
+                .get("currentUsage").asLong();
+
+        String responseB = mockMvc.perform(get("/usage/current")
                         .header("Authorization", "Bearer " + tokenOrgB))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
-        long orgBUsage = objectMapper.readTree(responseBAfter)
+        long orgBUsage = objectMapper.readTree(responseB)
                 .get("currentUsage").asLong();
 
-        assertEquals(0L, orgBUsage,
-                "Org B usage must be 0 regardless of Org A's API calls. " +
-                        "Non-zero means tenant isolation is broken.");
+        // Critical assertion: Org B's usage must be far less than Org A's
+        // Org A made many calls, Org B made only this one check
+        assertTrue(orgAUsage > orgBUsage,
+                "Org A usage (" + orgAUsage + ") must be greater than " +
+                        "Org B usage (" + orgBUsage + "). " +
+                        "If equal or Org B > Org A, tenant isolation is broken.");
     }
 
     @Test

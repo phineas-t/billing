@@ -3,7 +3,7 @@ spring:
     name: billing
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/billing_db?TimeZone=Asia/Kolkata
+    url: jdbc:postgresql://localhost:5433/billing_db
     username: billing_user
     password: billing_pass
     driver-class-name: org.postgresql.Driver

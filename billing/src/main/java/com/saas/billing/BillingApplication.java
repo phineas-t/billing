@@ -7,6 +7,8 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import com.saas.billing.common.config.JwtProperties;
 
+import java.util.TimeZone;
+
 @SpringBootApplication
 @EnableConfigurationProperties(JwtProperties.class)
 @EnableScheduling
@@ -14,6 +16,7 @@ import com.saas.billing.common.config.JwtProperties;
 public class BillingApplication {
 
 	public static void main(String[] args) {
+		TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
 		SpringApplication.run(BillingApplication.class, args);
 	}
 }

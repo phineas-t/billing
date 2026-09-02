@@ -33,7 +33,7 @@ public class OpenApiConfig {
                         .version("1.0.0")
                         .contact(new Contact()
                                 .name("Phineas")
-                                .email("tanisha.gusain0804@gmail.com")))
+                                .email("phineas20220@gmail.com")))
                 .addSecurityItem(new SecurityRequirement()
                         .addList("Bearer Authentication"))
                 .components(new Components()

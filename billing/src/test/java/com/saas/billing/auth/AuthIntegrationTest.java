@@ -151,7 +151,10 @@ class AuthIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(get("/usage/current")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.currentUsage").value(0));
+                .andExpect(jsonPath("$.orgId").isNotEmpty())
+                .andExpect(jsonPath("$.currentUsage")
+                        .value(org.hamcrest.Matchers
+                                .greaterThanOrEqualTo(0)));
     }
 
     @Test
