@@ -3,9 +3,10 @@ spring:
     name: billing
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/billing_db
-    username: billing_user
-    password: billing_pass
+    # Use Railway's DATABASE_URL, fallback to local Docker if not found
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/billing_db}
+    username: ${DATABASE_USERNAME:billing_user}
+    password: ${DATABASE_PASSWORD:billing_pass}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -22,8 +23,8 @@ spring:
 
   data:
     redis:
-      host: localhost
-      port: 6379
+      # Use Railway's REDIS_URL (full URI), fallback to local if not found
+      url: ${REDIS_URL:redis://localhost:6379}
 
 security:
   jwt:
