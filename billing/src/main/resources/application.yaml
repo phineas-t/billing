@@ -23,8 +23,7 @@ spring:
 
   data:
     redis:
-      host: ${SPRING_DATA_REDIS_HOST:localhost}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
+      url: ${REDIS_URL:redis://localhost:6379}
 
 security:
   jwt:
