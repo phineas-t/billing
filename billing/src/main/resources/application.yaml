@@ -23,7 +23,7 @@ spring:
 
   data:
     redis:
-      url: ${REDIS_URL:redis://localhost:6379}
+      url: ${SPRING_DATA_REDIS_URL:redis://localhost:6379}
 
 security:
   jwt:
