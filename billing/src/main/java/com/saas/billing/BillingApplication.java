@@ -1,5 +1,6 @@
 package com.saas.billing;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -18,5 +19,13 @@ public class BillingApplication {
 	public static void main(String[] args) {
 		TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
 		SpringApplication.run(BillingApplication.class, args);
+	}
+
+	@PostConstruct
+	public void logConfig() {
+		System.out.println("=== DB URL: " +
+				System.getenv("PGHOST") + ":" + System.getenv("PGPORT"));
+		System.out.println("=== REDIS: " +
+				System.getenv("REDISHOST") + ":" + System.getenv("REDISPORT"));
 	}
 }

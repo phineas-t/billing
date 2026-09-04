@@ -3,10 +3,10 @@ spring:
     name: billing
 
   datasource:
-    # Railway automatically provides PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD
-    url: jdbc:postgresql://${PGHOST:localhost}:${PGPORT:5433}/${PGDATABASE:billing_db}
-    username: ${PGUSER:billing_user}
-    password: ${PGPASSWORD:billing_pass}
+    # Reads the variable we just created in Railway
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/billing_db}
+    username: ${SPRING_DATASOURCE_USERNAME:billing_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:billing_pass}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -23,8 +23,8 @@ spring:
 
   data:
     redis:
-      host: ${REDISHOST:localhost}
-      port: ${REDISPORT:6379}
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
 
 security:
   jwt:
