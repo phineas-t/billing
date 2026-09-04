@@ -39,6 +39,7 @@ stripe:
 server:
   port: ${PORT:8080}
   address: 0.0.0.0
+  forward-headers-strategy: framework
 
 springdoc:
   swagger-ui:
@@ -47,3 +48,12 @@ springdoc:
     tagsSorter: alpha
   api-docs:
     path: /v3/api-docs
+
+management:
+  endpoint:
+    health:
+      show-details: always
+  endpoints:
+    web:
+      exposure:
+        include: health
